@@ -2,6 +2,7 @@
 pub struct RefOwner<T: 'static, R> {
     /// WARNING: Field order matters
     /// The target must be declared FIRST so it's dropped LAST
+    #[allow(unused)]
     target: Box<T>,
     reference: R,
 }
