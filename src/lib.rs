@@ -3,7 +3,7 @@
 
 # Architecture
 
-```
+```text
 XmlDoc
   ├── src: &str           — original source (never modified)
   └── tree: XmlSpanTree
@@ -18,7 +18,7 @@ XmlDoc
 
 # Coordinate conversion flow
 
-```
+```text
 byte index
    ↓  push_path()
 ancestor Vec<&ElementSpan>

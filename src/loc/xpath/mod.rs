@@ -25,7 +25,7 @@ This matches what [`TextSpan::logical_char_len`] computes.
 
 ## Example
 
-```text
+```xml
 <root><h1><a big="true">hello &amp; world</a><b>2</b></h1></root>
 ```
 
