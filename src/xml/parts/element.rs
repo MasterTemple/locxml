@@ -214,11 +214,33 @@ mod tests {
     fn get_path_into_nested() {
         let src = r#"<root><h1><a big="true">1</a><b>2</b></h1></root>"#;
         let el = parse(src);
-        // Byte 10 is inside <a>'s content ("1")
-        let idx = src.find('1').unwrap();
+
+        // src.find('1') would return byte 8, which is the '1' inside "<h1>" — not what we want.
+        // The text content "1" inside <a>...</a> sits at byte 24 (after the closing '>').
+        // Use rfind on a unique byte-string to be explicit.
+        let idx = src.find(">1<").unwrap() + 1; // byte of the '1' between '>' and '<'
+        assert_eq!(&src[idx..idx + 1], "1");
+
         let mut path = vec![];
         el.push_path(idx, &mut path);
         let names: Vec<_> = path.iter().filter_map(|e| e.name(src)).collect();
+        // root → h1 → a  (the text node itself has no name, so it doesn't appear in `names`)
         assert_eq!(names, vec!["root", "h1", "a"]);
+        // The deepest entry is the text node
+        assert!(path.last().unwrap().is_text());
+    }
+
+    #[test]
+    fn path_stops_at_opening_tag() {
+        let src = r#"<root><h1><a big="true">1</a></h1></root>"#;
+        let el = parse(src);
+        // Byte 8 is the '1' inside "<h1>", i.e. inside the opening tag's bytes — not a child.
+        let idx = 8;
+        assert_eq!(&src[idx..idx + 1], "1");
+        let mut path = vec![];
+        el.push_path(idx, &mut path);
+        let names: Vec<_> = path.iter().filter_map(|e| e.name(src)).collect();
+        // Stops at h1 because idx is inside h1's own open-tag bytes.
+        assert_eq!(names, vec!["root", "h1"]);
     }
 }

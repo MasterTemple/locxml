@@ -131,9 +131,13 @@ mod tests {
     #[test]
     fn path_at_text() {
         let doc = doc();
-        let idx = SRC.find('1').unwrap(); // inside <a>1</a>
+        // src.find('1') hits byte 8 — the '1' in the tag name "<h1>", not text content.
+        // Find the text "1" that sits between '>' and '<' to get the actual content byte.
+        let idx = SRC.find(">1<").unwrap() + 1;
+        assert_eq!(&SRC[idx..idx + 1], "1");
+
         let path = doc.path_at(idx).unwrap();
-        // root → h1 → a → text
+        // root → h1 → a → (text node, no name)
         let names: Vec<_> = path.iter().filter_map(|e| e.name(SRC)).collect();
         assert_eq!(names, vec!["root", "h1", "a"]);
         assert!(path.last().unwrap().is_text());
