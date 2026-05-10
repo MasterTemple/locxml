@@ -8,9 +8,6 @@ pub struct XmlSpanTree {
 }
 
 impl XmlSpanTree {
-    // pub fn parser<'a>() -> impl Parser<'a, &'a str, Self> {
-    //     ElementSpan::parser()
-    // }
     pub fn parse<'a>(input: &'a str) -> Result<Self, ()> {
         let root = ElementSpan::parser()
             .parse(input)

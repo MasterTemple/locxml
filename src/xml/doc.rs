@@ -17,6 +17,10 @@ impl<'a> XmlSpanDoc<'a> {
     pub fn new(xml: &'a str, tree: XmlSpanTree) -> Self {
         Self { xml, tree }
     }
+    pub fn parse(xml: &'a str) -> Result<Self, ()> {
+        let tree = XmlSpanTree::parse(xml)?;
+        Ok(Self::new(xml, tree))
+    }
     pub fn get_str(&self, range: impl Into<Range<usize>>) -> &str {
         let range = range.into();
         &self.xml[range]
@@ -63,13 +67,8 @@ mod tests {
     fn xml_doc() {
         let target = String::from(r#"<root><h1><a big="true">1</a><b>2</b><c>3</c></h1></root>"#);
         let len = target.len();
-        let doc = XmlSpanDoc::try_from_owned(target);
-        dbg!(&doc);
-        let doc = doc.unwrap();
-        dbg!(doc.get_str(7..9));
-        dbg!(doc.get_str(11..12));
+        let doc = XmlSpanDoc::try_from_owned(target).unwrap();
         for i in 0..len {
-            let el = doc.get_element(i).unwrap();
             println!(
                 "[{i}] {}",
                 doc.get_path(i)

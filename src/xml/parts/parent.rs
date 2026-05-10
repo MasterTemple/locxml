@@ -112,7 +112,6 @@ pub struct OpeningTagSpan {
 
 impl OpeningTagSpan {
     pub fn parser<'a>() -> impl Parser<'a, &'a str, Self> + Clone {
-        // TODO: What are the XML with ? and !
         just('<')
             .ignore_then(TagNameSpan::parser())
             .then(

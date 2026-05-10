@@ -59,7 +59,6 @@ pub trait RefTarget<'a, I: 'static + ?Sized>: Sized {
 }
 
 pub trait TryRefTarget<'a, I: 'static + ?Sized>: Sized {
-    // type Target: 'static;
     type Err: 'static;
     fn try_from_ref(target: &'a I) -> Result<Self, Self::Err>;
     fn try_from_owned<T: AsRef<I>>(target: T) -> Result<RefOwner<T, Self>, Self::Err> {
@@ -76,7 +75,6 @@ pub trait TryRefTarget<'a, I: 'static + ?Sized>: Sized {
         */
         let reference = unsafe {
             // This cast erases lifetime info
-            // let target_ref = &*(&*boxed as *const Self::Target);
             let target_ref = &*(boxed.as_ref().as_ref() as *const I);
             Self::try_from_ref(target_ref)?
         };

@@ -24,36 +24,44 @@ pub mod text;
 /// Self-Closing Tag
 pub mod unit;
 
+/// Used to map between the span-parsed/validated span, and another struct with more helpful data
+pub trait FromParsedSpan<'a> {
+    type ParsedSpan;
+    fn from_parsed(span: Self::ParsedSpan, source: &'a str) -> Self;
+}
+
+/// Used to get the full span from the beginning of the first part to the end of the last part
 pub trait FullSpan {
     fn full_span(&self) -> Span;
+    /// Used especially by [`FromParsedSpan::from_parsed`]
     fn get_slice<'a>(&self, source: &'a str) -> &'a str {
         let Span { start, end } = self.full_span();
         &source[start..end]
     }
 }
 
+/// Maybe not super helpful
 pub trait NameSpan {
     fn name_span(&self) -> Span;
 }
 
-pub type Idx = usize;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Span {
-    start: Idx,
-    /// I think this is exclusive
-    end: Idx,
+    start: usize,
+    /// This is exclusive
+    end: usize,
 }
-// TODO: impl idx/slice for Span
+// TODO: impl usize/slice for Span
 
 impl Span {
-    pub fn new(start: Idx, end: Idx) -> Self {
+    pub fn new(start: usize, end: usize) -> Self {
         Self { start, end }
     }
     pub fn merge(start: Span, end: Span) -> Self {
         Self::new(start.start, end.end)
     }
-    pub fn contains(&self, idx: usize) -> bool {
-        self.start <= idx && idx < self.end
+    pub fn contains(&self, usize: usize) -> bool {
+        self.start <= usize && usize < self.end
     }
 }
 impl From<SimpleSpan> for Span {
@@ -62,14 +70,14 @@ impl From<SimpleSpan> for Span {
     }
 }
 
-impl From<Range<Idx>> for Span {
-    fn from(Range { start, end, .. }: Range<Idx>) -> Self {
+impl From<Range<usize>> for Span {
+    fn from(Range { start, end, .. }: Range<usize>) -> Self {
         Self::new(start, end)
     }
 }
 
-impl Into<Range<Idx>> for Span {
-    fn into(self) -> Range<Idx> {
+impl Into<Range<usize>> for Span {
+    fn into(self) -> Range<usize> {
         self.start..self.end
     }
 }
