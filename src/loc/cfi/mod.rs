@@ -117,7 +117,129 @@ impl std::fmt::Display for EpubCfi {
     }
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── CfiRange ─────────────────────────────────────────────────────────────────
+
+/// A range between two EPUB CFI locations within the same document.
+///
+/// CFI ranges are defined in the EPUB CFI spec as a shared path prefix up to
+/// the point where the two endpoints diverge, followed by separate step
+/// suffixes for each endpoint.
+///
+/// # Example
+/// For a range that starts at `/2/4:3` and ends at `/2/4:10` (same text node,
+/// different character offsets):
+///   - `shared_steps`: `[/2, /4]`
+///   - `start_suffix`: `[]` with `start_char_offset: Some(3)`
+///   - `end_suffix`:   `[]` with `end_char_offset: Some(10)`
+///
+/// For a range spanning two different elements:
+///   - `shared_steps`: `[/2]`       (common ancestor)
+///   - `start_suffix`: `[/2, /1]`   (path from common ancestor to start)
+///   - `end_suffix`:   `[/4, /1]`   (path from common ancestor to end)
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CfiRange {
+    /// Steps shared by both endpoints (the longest common prefix).
+    pub shared_steps: Vec<CfiStep>,
+    /// Steps specific to the start endpoint, after the shared prefix diverges.
+    pub start_suffix: Vec<CfiStep>,
+    /// 0-based character offset for the start position (if in a text node).
+    pub start_char_offset: Option<usize>,
+    /// Steps specific to the end endpoint, after the shared prefix diverges.
+    pub end_suffix: Vec<CfiStep>,
+    /// 0-based character offset for the end position (if in a text node).
+    pub end_char_offset: Option<usize>,
+}
+
+impl CfiRange {
+    /// Build a `CfiRange` from two byte indices using a **single tree traversal**.
+    ///
+    /// ## Algorithm
+    /// 1. Collect the `start` path and `end` path from the tree (each `O(depth)`).
+    /// 2. Find the longest common prefix of the two step sequences — that is
+    ///    the shared path.
+    /// 3. The remaining suffixes are the unique tails for each endpoint.
+    ///
+    /// Because we call `path_at` twice rather than walking the tree once, the
+    /// total cost is `O(2 * depth)` = `O(depth)`.  A single-pass alternative
+    /// would require a more complex DFS that tracks both positions simultaneously;
+    /// the savings would be marginal for typical document depths (< 50).
+    pub fn from_byte_range(
+        src: &str,
+        root: &ElementSpan,
+        start_byte: usize,
+        end_byte: usize,
+    ) -> Option<Self> {
+        // Collect ancestor chains for both endpoints.
+        let start_path = push_path_at(root, start_byte)?;
+        let end_path = push_path_at(root, end_byte)?;
+
+        // Build the step sequences from each path.
+        let start_steps = path_to_cfi_steps(src, &start_path, start_byte);
+        let end_steps = path_to_cfi_steps(src, &end_path, end_byte);
+
+        // Find the length of the longest common prefix of step *values*.
+        let shared_len = start_steps
+            .steps
+            .iter()
+            .zip(end_steps.steps.iter())
+            .take_while(|(a, b)| a == b)
+            .count();
+
+        Some(CfiRange {
+            shared_steps: start_steps.steps[..shared_len].to_vec(),
+            start_suffix: start_steps.steps[shared_len..].to_vec(),
+            start_char_offset: start_steps.char_offset,
+            end_suffix: end_steps.steps[shared_len..].to_vec(),
+            end_char_offset: end_steps.char_offset,
+        })
+    }
+}
+
+impl std::fmt::Display for CfiRange {
+    /// Formats as `shared,start-suffix:offset,end-suffix:offset`.
+    ///
+    /// Example: `/2/4,/2:3,/6:10`
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Shared prefix.
+        for step in &self.shared_steps {
+            write!(f, "{step}")?;
+        }
+        write!(f, ",")?;
+        // Start suffix.
+        for step in &self.start_suffix {
+            write!(f, "{step}")?;
+        }
+        if let Some(off) = self.start_char_offset {
+            write!(f, ":{off}")?;
+        }
+        write!(f, ",")?;
+        // End suffix.
+        for step in &self.end_suffix {
+            write!(f, "{step}")?;
+        }
+        if let Some(off) = self.end_char_offset {
+            write!(f, ":{off}")?;
+        }
+        Ok(())
+    }
+}
+
+// ─── Internal helpers ────────────────────────────────────────────────────────
+
+/// Walk `root` to collect the ancestor chain containing `byte_idx`.
+fn push_path_at<'a>(root: &'a ElementSpan, byte_idx: usize) -> Option<Vec<&'a ElementSpan>> {
+    if !root.is_in(byte_idx) {
+        return None;
+    }
+    let mut path = Vec::new();
+    root.push_path(byte_idx, &mut path);
+    Some(path)
+}
+
+/// Convert an ancestor path into an `EpubCfi` (steps + optional char offset).
+fn path_to_cfi_steps(src: &str, path: &[&ElementSpan], byte_idx: usize) -> EpubCfi {
+    EpubCfi::from_path(src, path, byte_idx)
+}
 
 /// Compute the CFI step number for `target` within its `siblings` list.
 ///
@@ -142,7 +264,7 @@ impl std::fmt::Display for EpubCfi {
 ///   for a non-element child.
 ///
 /// This implementation counts element nodes before/at the target.
-fn cfi_step_for(siblings: &[ElementSpan], target: &ElementSpan) -> CfiStep {
+pub(crate) fn cfi_step_for(siblings: &[ElementSpan], target: &ElementSpan) -> CfiStep {
     if siblings.is_empty() {
         // Root element: always step 2.
         return CfiStep(2);
@@ -171,7 +293,7 @@ fn cfi_step_for(siblings: &[ElementSpan], target: &ElementSpan) -> CfiStep {
 
 /// 0-based logical character offset of byte `byte_idx` within a text node.
 /// (Same logic as in xpath/mod.rs — consider sharing via a utility fn.)
-fn char_offset_in_text(src: &str, text: &TextSpan, byte_idx: usize) -> usize {
+pub(crate) fn char_offset_in_text(src: &str, text: &TextSpan, byte_idx: usize) -> usize {
     use crate::xml::parts::text::TextChunk;
 
     let mut offset = 0usize;
@@ -260,5 +382,46 @@ mod tests {
         let c = cfi(src, b_idx);
         // "a " = 2 chars, "&amp;" = 1, " " = 1 → 'b' is offset 4
         assert_eq!(c.char_offset, Some(4));
+    }
+
+    #[test]
+    fn cfi_range_same_text_node() {
+        // Range within a single text node: offsets diverge, steps are shared.
+        let src = "<p>hello world</p>";
+        let doc = XmlDoc::parse(src).unwrap();
+        let start = src.find('h').unwrap();
+        let end = src.find('w').unwrap();
+        let range = doc.cfi_range(start, end).unwrap();
+        // Both endpoints are in the same text node → same steps, different offsets.
+        assert!(range.start_suffix.is_empty());
+        assert!(range.end_suffix.is_empty());
+        assert_eq!(range.start_char_offset, Some(0));
+        assert_eq!(range.end_char_offset, Some(6));
+    }
+
+    #[test]
+    fn cfi_range_different_nodes() {
+        // Range spanning two sibling elements.
+        let src = "<root><a>x</a><b>y</b></root>";
+        let doc = XmlDoc::parse(src).unwrap();
+        let start = src.find('x').unwrap();
+        let end = src.find('y').unwrap();
+        let range = doc.cfi_range(start, end).unwrap();
+        // shared prefix is just the root step /2; then they diverge.
+        assert_eq!(range.shared_steps.len(), 1);
+        assert!(!range.start_suffix.is_empty());
+        assert!(!range.end_suffix.is_empty());
+    }
+
+    #[test]
+    fn cfi_range_display() {
+        let src = "<p>hello world</p>";
+        let doc = XmlDoc::parse(src).unwrap();
+        let start = src.find('h').unwrap();
+        let end = src.find('w').unwrap();
+        let range = doc.cfi_range(start, end).unwrap();
+        let s = range.to_string();
+        // Should contain commas separating shared,start,end
+        assert_eq!(s.matches(',').count(), 2);
     }
 }

@@ -99,3 +99,45 @@ impl<T: Into<Span>> FullSpan for T {
     }
 }
 ```
+
+---
+
+Rust + Chumsky
+
+I am creating an XML parser that will let me effeciently traverse the tree in specific ways optimal for my use cases.
+
+My goal is to convert between the following:
+
+- EPUB CFI (at least the sub-path for this XML document)
+- XPath (with character offsets where an entity is length 1; I am choosing this because that is how the Browser Range API calculates it),
+- Line column pair of an XML file (trivial from byte index)
+- Byte index (usize) of an XML file
+
+The idea is that given one of the above locations, I will find the corresponding byte index range, and then convert it into the alternate location
+
+I have an XML tree that is mostly spans, only converting to another type with `FromParsedSpan` when necessary (and doing so lazily, because it is not important for my use case)
+
+Instructions
+
+1. Create structs to hold location ranges (start and end):
+- an XPath range
+- a line-column range
+- a byte range
+- a cfi range (also create a struct with shared steps, then the unique steps and char offset for when they branch off)
+
+Create traversals that are optimized for finding the start and end in 1 pass
+Create any other methods that would be helpful, practical, or ergonomic
+
+2. Write the span parsers for
+- CDATA
+- comment
+- declaration
+- instruction
+
+Also include them in the appropriate places for parsing the tree
+
+3. Investigate and see what XML parsing features are missed
+
+4. Correct all mistakes and add explanatory comments as appropriate
+
+I have attached my Cargo.toml and the src directory as a zip

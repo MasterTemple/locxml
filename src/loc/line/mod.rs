@@ -44,6 +44,39 @@ pub fn build_newline_table(src: &str) -> Vec<usize> {
         .collect()
 }
 
+// ─── LineColRange ─────────────────────────────────────────────────────────────
+
+/// A range between two `LineCol` positions, inclusive of `start`, exclusive of
+/// nothing (the range covers up to and including the last byte before `end`).
+///
+/// Both positions are derived from byte indices via [`LineCol::from_byte_index`]
+/// and a shared newline table; they are stored decoded for ergonomic display.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LineColRange {
+    pub start: LineCol,
+    pub end: LineCol,
+}
+
+impl LineColRange {
+    /// Build from two byte indices and a precomputed newline table.
+    pub fn from_byte_indices(
+        start_byte: usize,
+        end_byte: usize,
+        newline_offsets: &[usize],
+    ) -> Self {
+        Self {
+            start: LineCol::from_byte_index(start_byte, newline_offsets),
+            end: LineCol::from_byte_index(end_byte, newline_offsets),
+        }
+    }
+}
+
+impl std::fmt::Display for LineColRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} – {}", self.start, self.end)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,5 +120,14 @@ mod tests {
             LineCol::from_byte_index(2, &tbl),
             LineCol { line: 1, col: 3 }
         );
+    }
+
+    #[test]
+    fn line_col_range() {
+        let src = "ab\ncd\nef";
+        let tbl = build_newline_table(src);
+        let range = LineColRange::from_byte_indices(0, 6, &tbl);
+        assert_eq!(range.start, LineCol { line: 1, col: 1 });
+        assert_eq!(range.end, LineCol { line: 3, col: 1 });
     }
 }

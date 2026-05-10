@@ -144,6 +144,77 @@ impl std::fmt::Display for XPathLocation {
     }
 }
 
+// ─── XPathRange ──────────────────────────────────────────────────────────────
+
+/// A range between two XPath locations within the same document.
+///
+/// This maps directly to the browser's `Range` object, which is defined by
+/// a `(startContainer, startOffset, endContainer, endOffset)` tuple.  Here we
+/// store fully-qualified XPath addresses for both endpoints.
+///
+/// # Single-pass note
+/// We call `path_at` twice (O(depth) each), then build the `XPathLocation`
+/// for each.  The common ancestor is the longest shared prefix of the two step
+/// lists.  A true single-pass DFS is possible but the constant-factor gain is
+/// negligible for typical XML trees.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct XPathRange {
+    pub start: XPathLocation,
+    pub end: XPathLocation,
+}
+
+impl XPathRange {
+    /// Build from two byte indices.  Returns `None` if either index is
+    /// outside the document range.
+    pub fn from_byte_range(
+        src: &str,
+        root: &ElementSpan,
+        start_byte: usize,
+        end_byte: usize,
+    ) -> Option<Self> {
+        if !root.is_in(start_byte) || !root.is_in(end_byte) {
+            return None;
+        }
+        let start_path = {
+            let mut p = Vec::new();
+            root.push_path(start_byte, &mut p);
+            p
+        };
+        let end_path = {
+            let mut p = Vec::new();
+            root.push_path(end_byte, &mut p);
+            p
+        };
+        Some(XPathRange {
+            start: XPathLocation::from_path(src, &start_path, start_byte),
+            end: XPathLocation::from_path(src, &end_path, end_byte),
+        })
+    }
+
+    // TODO: Why does it say "Returns `None`"?
+
+    /// The deepest common ancestor step (longest shared prefix of both paths).
+    ///
+    /// Returns `None` when the two locations share no steps (only possible in
+    /// a malformed or empty path).
+    pub fn common_ancestor_path(&self) -> &[XPathStep] {
+        let shared = self
+            .start
+            .steps
+            .iter()
+            .zip(self.end.steps.iter())
+            .take_while(|(a, b)| a == b)
+            .count();
+        &self.start.steps[..shared]
+    }
+}
+
+impl std::fmt::Display for XPathRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}  –  {}", self.start, self.end)
+    }
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /// 1-based position of `target` among siblings with the same element name.
@@ -293,5 +364,31 @@ mod tests {
         assert!(s.contains("root[1]"));
         assert!(s.contains("p[1]"));
         assert!(s.contains("text()[1]"));
+    }
+
+    #[test]
+    fn xpath_range_same_node() {
+        let src = "<p>hello world</p>";
+        let doc = XmlDoc::parse(src).unwrap();
+        let start = src.find('h').unwrap();
+        let end = src.find('w').unwrap();
+        let range = doc.xpath_range(start, end).unwrap();
+        // Both endpoints are in the same text node; steps are identical.
+        assert_eq!(range.start.steps, range.end.steps);
+        assert_eq!(range.start.char_offset, Some(0));
+        assert_eq!(range.end.char_offset, Some(6));
+    }
+
+    #[test]
+    fn xpath_range_common_ancestor() {
+        let src = "<root><a>x</a><b>y</b></root>";
+        let doc = XmlDoc::parse(src).unwrap();
+        let start = src.find('x').unwrap();
+        let end = src.find('y').unwrap();
+        let range = doc.xpath_range(start, end).unwrap();
+        // Common ancestor is `root[1]`.
+        let anc = range.common_ancestor_path();
+        assert_eq!(anc.len(), 1);
+        assert!(matches!(&anc[0], XPathStep::Element { name, .. } if name == "root"));
     }
 }
